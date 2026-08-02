@@ -52,6 +52,7 @@ class ClipCandidate(BaseModel):
     title: str
     reason: str
     text: str
+    score_breakdown: dict[str, int] = Field(default_factory=dict)
 
 
 class ClipFile(BaseModel):

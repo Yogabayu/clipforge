@@ -16,6 +16,7 @@ export type ClipCandidate = {
   title: string;
   reason: string;
   text: string;
+  score_breakdown?: Record<string, number>;
 };
 
 export type ClipJob = {

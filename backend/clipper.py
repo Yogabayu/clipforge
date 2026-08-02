@@ -16,6 +16,8 @@ from rich.table import Table
 from slugify import slugify
 from yt_dlp import YoutubeDL
 
+from scoring import score_window
+
 
 console = Console()
 
@@ -37,42 +39,7 @@ class ClipCandidate:
     title: str
     reason: str
     text: str
-
-
-HOOK_WORDS = {
-    "intinya",
-    "ternyata",
-    "masalahnya",
-    "kenapa",
-    "gimana",
-    "bagaimana",
-    "cara",
-    "jangan",
-    "harus",
-    "penting",
-    "rahasia",
-    "bedanya",
-    "salah",
-    "benar",
-    "tips",
-    "trik",
-    "jadi",
-    "kalau",
-    "misalnya",
-}
-
-WEAK_STARTS = {
-    "dan",
-    "terus",
-    "lalu",
-    "nah",
-    "jadi",
-    "itu",
-    "ini",
-    "em",
-    "eh",
-    "ya",
-}
+    score_breakdown: dict[str, int]
 
 CropMode = Literal["center", "person"]
 YUNET_MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
@@ -416,51 +383,6 @@ def first_sentence(text: str, max_words: int = 8) -> str:
     return " ".join(words[:max_words]).capitalize() or "Auto clip"
 
 
-def score_window(items: list[TranscriptSegment], duration: float) -> tuple[int, list[str]]:
-    text = " ".join(item.text for item in items)
-    words = re.findall(r"[\w']+", text.lower())
-    first_word = words[0] if words else ""
-    hook_hits = sorted(HOOK_WORDS.intersection(words))
-
-    score = 35
-    reasons: list[str] = []
-
-    if 45 <= duration <= 120:
-        score += 18
-        reasons.append("durasi pas")
-    elif 35 <= duration <= 180:
-        score += 12
-        reasons.append("durasi masih oke")
-
-    if hook_hits:
-        bump = min(24, len(hook_hits) * 6)
-        score += bump
-        reasons.append("ada keyword hook: " + ", ".join(hook_hits[:4]))
-
-    word_count = len(words)
-    density = word_count / max(duration, 1)
-    if density >= 1.8:
-        score += 12
-        reasons.append("speech padat")
-    elif density >= 1.1:
-        score += 6
-        reasons.append("speech cukup padat")
-
-    if text.rstrip().endswith((".", "!", "?")):
-        score += 5
-        reasons.append("ending terasa selesai")
-
-    if first_word in WEAK_STARTS:
-        score -= 10
-        reasons.append("awal agak menggantung")
-
-    if word_count < 55:
-        score -= 12
-        reasons.append("terlalu sedikit konteks")
-
-    return max(1, min(100, score)), reasons
-
-
 def build_candidates(
     segments: list[TranscriptSegment],
     min_duration: float,
@@ -482,17 +404,18 @@ def build_candidates(
                 break
 
             text = " ".join(part.text for part in window)
-            score, reasons = score_window(window, duration)
+            score_result = score_window(window, duration)
             candidates.append(
                 ClipCandidate(
                     index=0,
                     start=max(0, first.start - 0.35),
                     end=window[-1].end + 0.25,
                     duration=duration,
-                    score=score,
+                    score=score_result.score,
                     title=first_sentence(text),
-                    reason=", ".join(reasons) or "segmen stabil",
+                    reason=", ".join(score_result.reasons) or "segmen stabil",
                     text=text,
+                    score_breakdown=score_result.breakdown,
                 )
             )
 
