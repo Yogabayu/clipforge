@@ -7,7 +7,7 @@ Pipeline:
 1. Fetch metadata and download source video with `yt-dlp`.
 2. Extract mono 16 kHz audio with FFmpeg.
 3. Transcribe audio locally with `faster-whisper`.
-4. Score transcript windows into clip candidates.
+4. Score transcript windows into clip candidates, or use evenly spaced timeline candidates when no dialogue is detected.
 5. Export MP4 clips, SRT subtitles, and JSON metadata.
 
 ## Setup
@@ -75,6 +75,7 @@ Default output video:
 - subtitle burned-in
 - transcript lokal via `Systran/faster-whisper-small`
 - durasi clip dinamis, maksimal 3 menit secara default
+- video tanpa dialog memakai kandidat timeline dengan skor `0` dan tanpa subtitle
 
 If CPU feels too slow, use a smaller model:
 

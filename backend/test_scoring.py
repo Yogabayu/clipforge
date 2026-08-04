@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest import TestCase
 
+from clipper import build_timeline_candidates
 from scoring import score_window
 
 
@@ -42,3 +43,18 @@ class ScoreWindowTests(TestCase):
         plain = [segment(0, 4, "Pembukaan biasa tanpa pemicu."), segment(6, 12, "Penjelasan biasa ada di sini.")]
 
         self.assertEqual(score_window(early, 40).breakdown["opening"], score_window(plain, 40).breakdown["opening"])
+
+
+class TimelineCandidateTests(TestCase):
+    def test_builds_unscored_candidates_when_dialogue_is_absent(self) -> None:
+        candidates = build_timeline_candidates(300, 35, 180, 3)
+
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual([item.index for item in candidates], [1, 2, 3])
+        self.assertTrue(all(item.duration == 85 for item in candidates))
+        self.assertTrue(all(item.score == 0 for item in candidates))
+        self.assertTrue(all(item.text == "" for item in candidates))
+        self.assertGreater(candidates[1].start, candidates[0].end)
+
+    def test_returns_empty_when_video_is_shorter_than_minimum(self) -> None:
+        self.assertEqual(build_timeline_candidates(20, 35, 180, 3), [])

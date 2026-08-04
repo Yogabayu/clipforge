@@ -448,6 +448,40 @@ def build_candidates(
     return picked
 
 
+def build_timeline_candidates(
+    video_duration: float | None,
+    min_duration: float,
+    max_duration: float,
+    limit: int,
+) -> list[ClipCandidate]:
+    """Create evenly spaced, unscored clips when no speech is available."""
+    if not video_duration or video_duration < min_duration or limit <= 0:
+        return []
+
+    clip_duration = min(video_duration, max_duration, max(min_duration, 85.0))
+    candidate_count = min(limit, max(1, int(video_duration // clip_duration)))
+    max_start = max(0.0, video_duration - clip_duration)
+    starts = [
+        0.0 if candidate_count == 1 else max_start * index / (candidate_count - 1)
+        for index in range(candidate_count)
+    ]
+
+    return [
+        ClipCandidate(
+            index=index,
+            start=round(start, 3),
+            end=round(min(video_duration, start + clip_duration), 3),
+            duration=round(min(clip_duration, video_duration - start), 3),
+            score=0,
+            title=f"Visual clip {index}",
+            reason="fallback timeline; tidak dinilai dari dialog",
+            text="",
+            score_breakdown={},
+        )
+        for index, start in enumerate(starts, start=1)
+    ]
+
+
 def segments_for_clip(segments: Iterable[TranscriptSegment], clip: ClipCandidate) -> list[TranscriptSegment]:
     return [item for item in segments if item.end > clip.start and item.start < clip.end]
 
@@ -722,8 +756,11 @@ def main() -> int:
 
     console.print("[bold]Scoring candidate clips...[/bold]")
     candidates = build_candidates(transcript, args.min, args.max, args.top)
+    if not transcript:
+        console.print("[yellow]No dialogue detected. Using evenly spaced timeline candidates.[/yellow]")
+        candidates = build_timeline_candidates(metadata.get("duration"), args.min, args.max, args.top)
     if not candidates:
-        console.print("[red]No clip candidates found. Try lowering --min or increasing --max.[/red]")
+        console.print("[red]No clip candidates found. Video may be shorter than --min or metadata duration is unavailable.[/red]")
         return 1
 
     save_json(work_dir / f"candidates{cache_suffix}.json", [asdict(item) for item in candidates])
