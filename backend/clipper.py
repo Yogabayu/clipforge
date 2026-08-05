@@ -217,7 +217,10 @@ def detect_person_focus_x(video_path: Path, clip: ClipCandidate) -> tuple[float,
 
 
 def vertical_crop_filter(video_path: Path, clip: ClipCandidate, crop_mode: CropMode) -> str:
-    center_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    center_filter = (
+        "scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=gray,setsar=1"
+    )
     if crop_mode == "center":
         return center_filter
 
@@ -713,7 +716,7 @@ def parse_args() -> argparse.Namespace:
         "--crop-mode",
         choices=["center", "person"],
         default="center",
-        help="Use center crop or shift the vertical crop toward a detected person",
+        help="Fit the full video on a gray 9:16 canvas or crop toward a detected person",
     )
     parser.add_argument("--force", action="store_true", help="Redo download, audio extraction, and transcription")
     return parser.parse_args()

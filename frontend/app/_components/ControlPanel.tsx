@@ -82,7 +82,7 @@ export function ControlPanel({
             type="button"
             onClick={() => onCropModeChange("center")}
           >
-            Center
+            Fit Landscape
           </button>
           <button
             className={cropMode === "person" ? "active" : ""}
@@ -92,6 +92,11 @@ export function ControlPanel({
             Follow Person
           </button>
         </div>
+        <p className="field-help">
+          {cropMode === "center"
+            ? "Rasio video dipertahankan; ruang atas dan bawah diisi abu-abu."
+            : "Video di-crop vertikal mengikuti posisi orang yang terdeteksi."}
+        </p>
       </div>
 
       {error ? <p className="error">{error}</p> : null}

@@ -70,6 +70,7 @@ outputs/
 Default output video:
 
 - vertical `1080x1920`
+- mode `center` mempertahankan rasio video pada canvas abu-abu `1080x1920` tanpa memotong sisi landscape
 - H.264 MP4, CRF 18
 - source download mencoba HD sampai 1080p (`bestvideo+bestaudio`)
 - subtitle burned-in

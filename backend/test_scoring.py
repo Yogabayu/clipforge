@@ -1,7 +1,8 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
 
-from clipper import build_timeline_candidates
+from clipper import ClipCandidate, build_timeline_candidates, vertical_crop_filter
 from scoring import score_window
 
 
@@ -58,3 +59,15 @@ class TimelineCandidateTests(TestCase):
 
     def test_returns_empty_when_video_is_shorter_than_minimum(self) -> None:
         self.assertEqual(build_timeline_candidates(20, 35, 180, 3), [])
+
+
+class VideoLayoutTests(TestCase):
+    def test_center_mode_fits_video_on_gray_vertical_canvas(self) -> None:
+        clip = ClipCandidate(1, 0, 60, 60, 0, "Test", "Test", "", {})
+
+        video_filter = vertical_crop_filter(Path("unused.mp4"), clip, "center")
+
+        self.assertIn("force_original_aspect_ratio=decrease", video_filter)
+        self.assertIn("pad=1080:1920", video_filter)
+        self.assertIn("color=gray", video_filter)
+        self.assertNotIn("crop=", video_filter)

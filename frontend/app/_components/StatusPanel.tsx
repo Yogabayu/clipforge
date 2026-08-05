@@ -25,7 +25,7 @@ export function StatusPanel({ job, latestLogs }: StatusPanelProps) {
               {job.request.min_duration}s - {job.request.max_duration}s
             </span>
             <span>{job.request.analyze_seconds ? `Test: ${job.request.analyze_seconds}s` : "Full video"}</span>
-            <span>{job.request.crop_mode === "person" ? "Follow person" : "Center crop"}</span>
+            <span>{job.request.crop_mode === "person" ? "Follow person" : "Fit landscape"}</span>
           </div>
 
           <div className="logBox">
