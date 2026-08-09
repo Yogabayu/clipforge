@@ -27,6 +27,16 @@ export function SiteFooter() {
         <Coffee size={16} aria-hidden="true" />
         Buy me a coffee
       </a>
+      or
+      <a
+        className="donationLink"
+        href="https://saweria.co/mallexibra"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <Coffee size={16} aria-hidden="true" />
+        Buy me Mallexibra coffee
+      </a>
     </footer>
   );
 }
