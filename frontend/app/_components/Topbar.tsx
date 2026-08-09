@@ -10,11 +10,16 @@ export function Topbar({ onRefresh }: TopbarProps) {
       <div className="topbar-brand">
         <img className="brandMark" src="/logo.svg" alt="" aria-hidden="true" />
         <div className="brandCopy">
-          <h1 className="logo-text">ClipForge</h1>
+          <h1 className="logo-text">ClipForge v2.0</h1>
           <p className="tagline">Turn long videos into ready-to-post clips.</p>
         </div>
       </div>
-      <button className="iconButton" type="button" onClick={onRefresh} title="Refresh data">
+      <button
+        className="iconButton"
+        type="button"
+        onClick={onRefresh}
+        title="Refresh data"
+      >
         <RefreshCw size={18} />
       </button>
     </section>
