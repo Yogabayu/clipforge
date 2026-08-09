@@ -40,7 +40,7 @@ class ClipJobRequest(BaseModel):
     language: str = "id"
     analyze_seconds: float | None = Field(default=None, ge=10, le=7200)
     burn_subtitles: bool = True
-    crop_mode: Literal["center", "person"] = "center"
+    crop_mode: Literal["center", "person", "clip"] = "center"
 
 
 class ClipCandidate(BaseModel):
@@ -53,6 +53,20 @@ class ClipCandidate(BaseModel):
     reason: str
     text: str
     score_breakdown: dict[str, int] = Field(default_factory=dict)
+
+
+class ClipRange(BaseModel):
+    index: int = Field(ge=1)
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    title: str = Field(min_length=1, max_length=120)
+
+
+class RenderSelectionRequest(BaseModel):
+    ranges: list[ClipRange] = Field(min_length=1, max_length=12)
+    combine: bool = False
+    output_aspect: Literal['portrait', 'landscape'] = 'portrait'
+    output_resolution: Literal['720p', '1080p', '1440p'] = '1080p'
 
 
 class ClipFile(BaseModel):
@@ -70,6 +84,8 @@ class ClipJob(BaseModel):
     logs: list[str] = []
     clips: list[ClipFile] = []
     candidates: list[ClipCandidate] = []
+    source_url: str | None = None
+    video_duration: float | None = None
     error: str | None = None
 
 
@@ -171,6 +187,43 @@ def discover_candidates(started_at: float) -> list[ClipCandidate]:
     return [ClipCandidate(**item) for item in payload]
 
 
+def discover_source(started_at: float) -> tuple[str | None, float | None]:
+    candidate_files = [
+        path
+        for path in OUTPUTS_DIR.rglob('candidates*.json')
+        if path.stat().st_mtime + 1 >= started_at
+    ]
+    if not candidate_files:
+        return None, None
+
+    work_dir = max(candidate_files, key=lambda path: path.stat().st_mtime).parent
+    source_files = sorted(work_dir.glob('source.*'))
+    metadata_path = work_dir / 'metadata.json'
+    duration = None
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        if metadata.get('duration'):
+            duration = float(metadata['duration'])
+    return (clip_url(source_files[0]) if source_files else None, duration)
+
+
+def hydrate_job_source(job: ClipJob) -> ClipJob:
+    if job.source_url and job.video_duration:
+        return job
+    for metadata_path in OUTPUTS_DIR.rglob('metadata.json'):
+        metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        known_urls = {metadata.get('webpage_url'), metadata.get('original_url')}
+        if job.request.url not in known_urls:
+            continue
+        source_files = sorted(metadata_path.parent.glob('source.*'))
+        if not source_files or not metadata.get('duration'):
+            continue
+        data = job.model_dump()
+        data.update(source_url=clip_url(source_files[0]), video_duration=float(metadata['duration']))
+        return ClipJob(**data)
+    return job
+
+
 def set_job(job_id: str, **updates) -> None:
     with jobs_lock:
         job = jobs[job_id]
@@ -251,13 +304,38 @@ def build_clipper_command(request: ClipJobRequest) -> list[str]:
     return command
 
 
-def run_job(job_id: str) -> None:
+def build_selection_command(
+    request: ClipJobRequest,
+    ranges: list[ClipRange],
+    combine: bool,
+    output_aspect: Literal['portrait', 'landscape'],
+    output_resolution: Literal['720p', '1080p', '1440p'],
+) -> list[str]:
+    command = build_clipper_command(request)
+    command.extend(['--manual-ranges-json', json.dumps([item.model_dump() for item in ranges])])
+    if combine:
+        command.append('--combine-manual-ranges')
+    command.extend(['--output-aspect', output_aspect])
+    command.extend(['--output-resolution', output_resolution])
+    return command
+
+
+def run_job(
+    job_id: str,
+    ranges: list[ClipRange] | None = None,
+    combine: bool = False,
+    output_aspect: Literal['portrait', 'landscape'] = 'portrait',
+    output_resolution: Literal['720p', '1080p', '1440p'] = '1080p',
+) -> None:
     with jobs_lock:
         request = jobs[job_id].request
 
     started_at = time.time()
     set_job(job_id, status="running", error=None)
-    command = build_clipper_command(request)
+    if ranges:
+        command = build_selection_command(request, ranges, combine, output_aspect, output_resolution)
+    else:
+        command = [*build_clipper_command(request), '--review-only']
 
     process = subprocess.Popen(
         command,
@@ -281,8 +359,10 @@ def run_job(job_id: str) -> None:
     code = process.wait()
     clips = discover_clips(started_at)
     candidates = discover_candidates(started_at)
+    source_url, video_duration = discover_source(started_at)
     if code == 0:
         updates = {"status": "completed", "logs": logs[-120:]}
+        updates.update(source_url=source_url, video_duration=video_duration)
         if clips:
             updates["clips"] = clips
         if candidates:
@@ -304,7 +384,41 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/jobs", response_model=ClipJob)
+def queue_selection_job(
+    source_job: ClipJob,
+    ranges: list[ClipRange],
+    combine: bool,
+    output_aspect: Literal['portrait', 'landscape'],
+    output_resolution: Literal['720p', '1080p', '1440p'],
+) -> ClipJob:
+    duration = source_job.video_duration
+    if not source_job.source_url or not duration:
+        raise HTTPException(status_code=409, detail='Full video source is not ready')
+    for selected in ranges:
+        if selected.end > duration or selected.end <= selected.start:
+            raise HTTPException(status_code=400, detail=f'Range {selected.index} is invalid')
+
+    render_job = ClipJob(
+        id=uuid.uuid4().hex,
+        status='queued',
+        request=source_job.request,
+        created_at=now_iso(),
+        updated_at=now_iso(),
+    )
+    with jobs_lock:
+        jobs[render_job.id] = render_job
+        save_jobs_unlocked()
+
+    thread = threading.Thread(
+        target=run_job,
+        args=(render_job.id, ranges, combine, output_aspect, output_resolution),
+        daemon=True,
+    )
+    thread.start()
+    return render_job
+
+
+@app.post('/api/jobs', response_model=ClipJob)
 def create_job(request: ClipJobRequest) -> ClipJob:
     if request.max_duration <= request.min_duration:
         raise HTTPException(status_code=400, detail="max_duration must be greater than min_duration")
@@ -327,13 +441,32 @@ def create_job(request: ClipJobRequest) -> ClipJob:
     return job
 
 
+@app.post('/api/jobs/{job_id}/render', response_model=ClipJob)
+def render_selection(job_id: str, selection: RenderSelectionRequest) -> ClipJob:
+    with jobs_lock:
+        source_job = jobs.get(job_id)
+    if not source_job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if source_job.status != 'completed':
+        raise HTTPException(status_code=409, detail='Full video source is not ready')
+    source_job = hydrate_job_source(source_job)
+    return queue_selection_job(
+        source_job,
+        selection.ranges,
+        selection.combine,
+        selection.output_aspect,
+        selection.output_resolution,
+    )
+
+
 
 
 
 @app.get("/api/jobs", response_model=list[ClipJob])
 def list_jobs() -> list[ClipJob]:
     with jobs_lock:
-        return sorted(jobs.values(), key=lambda job: job.created_at, reverse=True)
+        ordered = sorted(jobs.values(), key=lambda job: job.created_at, reverse=True)
+    return [hydrate_job_source(job) for job in ordered]
 
 
 @app.delete("/api/jobs")
@@ -351,4 +484,4 @@ def get_job(job_id: str) -> ClipJob:
         job = jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    return hydrate_job_source(job)

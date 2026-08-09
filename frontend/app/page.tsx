@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { createJob, deleteJobs, getJob, getJobs } from "../lib/apiClient";
+import { createJob, deleteJobs, getJob, getJobs, renderSelection } from '../lib/apiClient';
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_MAX_DURATION,
@@ -12,7 +12,8 @@ import {
   RECENT_LOG_LIMIT,
 } from "../lib/constants";
 import { isActiveJob } from "../lib/utils";
-import type { ClipJob, CropMode } from "../types/clip.type";
+import type { ClipJob, ClipRange, CropMode, OutputAspect, OutputResolution } from '../types/clip.type';
+import { ClipReviewSection } from './_components/ClipReviewSection';
 import { ControlPanel } from "./_components/ControlPanel";
 import { DeleteAllToast } from "./_components/DeleteAllToast";
 import { HistorySection } from "./_components/HistorySection";
@@ -23,10 +24,9 @@ import { Topbar } from "./_components/Topbar";
 
 export default function HomePage() {
   const [url, setUrl] = useState("");
-  const [minDuration, setMinDuration] = useState(DEFAULT_MIN_DURATION);
-  const [maxDuration, setMaxDuration] = useState(DEFAULT_MAX_DURATION);
   const [cropMode, setCropMode] = useState<CropMode>("person");
   const [job, setJob] = useState<ClipJob | null>(null);
+  const [editorJob, setEditorJob] = useState<ClipJob | null>(null);
   const [jobs, setJobs] = useState<ClipJob[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +58,10 @@ export default function HomePage() {
     return () => window.clearInterval(interval);
   }, [activeJobId, loadJobs]);
 
+  useEffect(() => {
+    if (job?.status === 'completed' && job.source_url) setEditorJob(job);
+  }, [job]);
+
   const handleStartJob = useCallback(async () => {
     const trimmedUrl = url.trim();
     setError("");
@@ -73,8 +77,8 @@ export default function HomePage() {
       const nextJob = await toast.promise(
         createJob({
           url: trimmedUrl,
-          min_duration: minDuration,
-          max_duration: maxDuration,
+          min_duration: DEFAULT_MIN_DURATION,
+          max_duration: DEFAULT_MAX_DURATION,
           model: DEFAULT_MODEL,
           language: DEFAULT_LANGUAGE,
           burn_subtitles: true,
@@ -88,13 +92,14 @@ export default function HomePage() {
       );
 
       setJob(nextJob);
+      setEditorJob(null);
       await loadJobs();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Gagal memulai proses.");
     } finally {
       setIsSubmitting(false);
     }
-  }, [cropMode, loadJobs, maxDuration, minDuration, url]);
+  }, [cropMode, loadJobs, url]);
 
   const handleDeleteAllConfirmed = useCallback(async () => {
     await toast.promise(deleteJobs(), {
@@ -104,6 +109,7 @@ export default function HomePage() {
     });
 
     setJob(null);
+    setEditorJob(null);
     await loadJobs();
   }, [loadJobs]);
 
@@ -112,6 +118,30 @@ export default function HomePage() {
       duration: Infinity,
     });
   }, [handleDeleteAllConfirmed]);
+
+  const handleRenderSelection = useCallback(async (
+    ranges: ClipRange[],
+    combine: boolean,
+    outputAspect: OutputAspect,
+    outputResolution: OutputResolution,
+  ) => {
+    if (!editorJob) return;
+    const nextJob = await toast.promise(
+      renderSelection(editorJob.id, ranges, combine, outputAspect, outputResolution),
+      {
+      loading: 'Menyiapkan bagian pilihan...',
+      success: 'Render pilihan dimulai!',
+      error: 'Gagal merender pilihan',
+      },
+    );
+    setJob(nextJob);
+    await loadJobs();
+  }, [editorJob, loadJobs]);
+
+  const handleSelectJob = useCallback((selectedJob: ClipJob) => {
+    setJob(selectedJob);
+    if (selectedJob.status === 'completed' && selectedJob.source_url) setEditorJob(selectedJob);
+  }, []);
 
   return (
     <main className="shell">
@@ -123,11 +153,7 @@ export default function HomePage() {
           error={error}
           isBusy={isBusy}
           isSubmitting={isSubmitting}
-          maxDuration={maxDuration}
-          minDuration={minDuration}
           onCropModeChange={setCropMode}
-          onMaxDurationChange={setMaxDuration}
-          onMinDurationChange={setMinDuration}
           onStartJob={handleStartJob}
           onUrlChange={setUrl}
           url={url}
@@ -135,8 +161,17 @@ export default function HomePage() {
         <StatusPanel job={job} latestLogs={latestLogs} />
       </section>
 
+      {editorJob ? (
+        <ClipReviewSection
+          exportDisabled={isBusy}
+          onRender={handleRenderSelection}
+          sourceUrl={editorJob.source_url}
+          videoDuration={editorJob.video_duration}
+        />
+      ) : null}
+
       <ResultsSection clips={job?.clips ?? []} />
-      <HistorySection jobs={jobs} onDeleteAll={handleDeleteAll} onSelectJob={setJob} />
+      <HistorySection jobs={jobs} onDeleteAll={handleDeleteAll} onSelectJob={handleSelectJob} />
       <SiteFooter />
     </main>
   );

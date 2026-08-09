@@ -1,5 +1,7 @@
 export type JobStatus = "queued" | "running" | "completed" | "failed";
-export type CropMode = "center" | "person";
+export type CropMode = 'center' | 'person' | 'clip';
+export type OutputAspect = 'portrait' | 'landscape';
+export type OutputResolution = '720p' | '1080p' | '1440p';
 
 export type ClipFile = {
   name: string;
@@ -27,6 +29,8 @@ export type ClipJob = {
   logs: string[];
   clips: ClipFile[];
   candidates: ClipCandidate[];
+  source_url: string | null;
+  video_duration: number | null;
   error: string | null;
   request: {
     url: string;
@@ -40,6 +44,8 @@ export type ClipJob = {
     crop_mode: CropMode;
   };
 };
+
+export type ClipRange = Pick<ClipCandidate, 'index' | 'start' | 'end' | 'title'>;
 
 export type CreateClipJobInput = {
   url: string;

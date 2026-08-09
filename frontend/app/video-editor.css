@@ -1,0 +1,351 @@
+.fullVideoEditor {
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.editorWorkspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.42fr) minmax(360px, 0.58fr);
+  gap: 24px;
+}
+
+.editorPreview {
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #0F172A;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+.editorPreview video {
+  display: block;
+  width: 100%;
+  max-height: 430px;
+  background: #000000;
+  object-fit: contain;
+  outline: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.playheadReadout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 16px;
+  color: #CBD5E1;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.playheadReadout strong {
+  color: #FFFFFF;
+  font-size: 16px;
+}
+
+.timelinePanel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.masterTimeline {
+  position: relative;
+  height: 94px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #FEE2E2;
+  box-shadow: inset 0 0 0 1px rgba(127, 29, 29, 0.12);
+  cursor: crosshair;
+}
+
+.discardTrack {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: #991B1B;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.keepSegment {
+  position: absolute;
+  top: 10px;
+  z-index: 2;
+  min-width: 6px;
+  height: 74px;
+  overflow: hidden;
+  border: 1px solid #16A34A;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #4ADE80, #22C55E);
+  color: #052E16;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.keepSegment:hover {
+  filter: brightness(1.05);
+}
+
+.keepSegment:active {
+  transform: scale(0.96);
+}
+
+.draftSegment {
+  position: absolute;
+  top: 16px;
+  z-index: 3;
+  min-width: 2px;
+  height: 62px;
+  border: 2px dashed #F8FAFC;
+  border-radius: 7px;
+  background: rgba(37, 99, 235, 0.46);
+  pointer-events: none;
+}
+
+.timelinePlayhead {
+  position: absolute;
+  top: 0;
+  z-index: 4;
+  width: 2px;
+  height: 100%;
+  background: #0F172A;
+  pointer-events: none;
+}
+
+.timelinePlayhead::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #0F172A;
+  content: '';
+  transform: translate(-50%, -35%);
+}
+
+.timelineScale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.secondaryButton,
+.selectionPlay,
+.removeSelection,
+.exportMode button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.secondaryButton:active,
+.selectionPlay:active,
+.removeSelection:active,
+.exportMode button:active {
+  transform: scale(0.96);
+}
+
+.markRangeActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.markButton {
+  gap: 8px;
+  padding: 0 16px;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.markButton.isMarked {
+  border-color: var(--primary);
+  background: #EFF6FF;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cancelMarkButton {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.selectionList {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.selectionRow {
+  display: grid;
+  grid-template-columns: 40px minmax(90px, 1fr) minmax(125px, 0.8fr) minmax(125px, 0.8fr) 70px 40px;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.selectionRow > strong {
+  align-self: center;
+  font-size: 14px;
+}
+
+.selectionRow label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.selectionRow input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  padding: 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.selectionDuration {
+  align-self: center;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.removeSelection {
+  color: var(--danger);
+}
+
+.selectionEmpty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.editorFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.exportMode {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: #EEF2F7;
+}
+
+.exportSettings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.exportSettings > div {
+  display: grid;
+  gap: 6px;
+}
+
+.exportSettingLabel {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.exportMode button {
+  gap: 7px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.exportMode button.active {
+  background: #FFFFFF;
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.editorFooter .exportButton {
+  margin-top: 0;
+}
+
+@media (max-width: 920px) {
+  .editorWorkspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .fullVideoEditor {
+    padding: 18px;
+  }
+
+  .selectionRow {
+    grid-template-columns: 40px 1fr 40px;
+  }
+
+  .selectionRow label {
+    grid-column: span 3;
+  }
+
+  .selectionDuration {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .editorFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .exportSettings {
+    display: grid;
+  }
+
+  .exportMode {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

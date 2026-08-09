@@ -6,6 +6,7 @@ import math
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Literal
@@ -16,7 +17,9 @@ from rich.table import Table
 from slugify import slugify
 from yt_dlp import YoutubeDL
 
+from montage import sequence_badge_filter
 from scoring import score_window
+from video_resolution import OutputAspect, OutputResolution, build_output_filter
 
 
 console = Console()
@@ -41,7 +44,9 @@ class ClipCandidate:
     text: str
     score_breakdown: dict[str, int]
 
-CropMode = Literal["center", "person"]
+CropMode = Literal["center", "person", "clip"]
+MAX_MONTAGE_SEGMENTS = 5
+MIN_MONTAGE_SEGMENT_SECONDS = 5.0
 YUNET_MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 
 TRANSCRIPT_REPLACEMENTS = {
@@ -221,7 +226,7 @@ def vertical_crop_filter(video_path: Path, clip: ClipCandidate, crop_mode: CropM
         "scale=1080:1920:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=gray,setsar=1"
     )
-    if crop_mode == "center":
+    if crop_mode != "person":
         return center_filter
 
     focus = detect_person_focus_x(video_path, clip)
@@ -237,6 +242,17 @@ def vertical_crop_filter(video_path: Path, clip: ClipCandidate, crop_mode: CropM
     crop_y = clamp_even((scaled_height - 1920) / 2, 0, scaled_height - 1920)
     console.print(f"[green]Person crop[/green] clip {clip.index}: focus x={focus_x:.2f}, crop x={crop_x}")
     return f"scale={scaled_width}:{scaled_height},crop=1080:1920:{crop_x}:{crop_y},setsar=1"
+
+
+def output_video_filter(
+    video_path: Path,
+    clip: ClipCandidate,
+    crop_mode: CropMode,
+    output_aspect: OutputAspect,
+    output_resolution: OutputResolution,
+) -> str:
+    portrait_filter = vertical_crop_filter(video_path, clip, crop_mode) if output_aspect == 'portrait' else ''
+    return build_output_filter(portrait_filter, output_aspect, output_resolution)
 
 
 def seconds_to_stamp(seconds: float, srt: bool = False) -> str:
@@ -277,13 +293,8 @@ def fetch_metadata(url: str) -> dict:
         return sanitize_metadata(ydl.extract_info(url, download=False))
 
 
-def download_video(url: str, work_dir: Path, force: bool = False) -> tuple[Path, dict]:
-    info_path = work_dir / "metadata.json"
-    existing = sorted(work_dir.glob("source.*"))
-    if existing and info_path.exists() and not force:
-        return existing[0], load_json(info_path)
-
-    ydl_opts = {
+def video_download_options(work_dir: Path) -> dict:
+    return {
         "format": (
             "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
             "bestvideo[height<=1080]+bestaudio/"
@@ -296,10 +307,21 @@ def download_video(url: str, work_dir: Path, force: bool = False) -> tuple[Path,
         "noprogress": True,
         "no_warnings": True,
         "ffmpeg_location": ffmpeg_path(),
+        "socket_timeout": 60,
+        "retries": 20,
+        "fragment_retries": 20,
+        "continuedl": True,
     }
 
+
+def download_video(url: str, work_dir: Path, force: bool = False) -> tuple[Path, dict]:
+    info_path = work_dir / "metadata.json"
+    existing = sorted(work_dir.glob("source.*"))
+    if existing and info_path.exists() and not force:
+        return existing[0], load_json(info_path)
+
     work_dir.mkdir(parents=True, exist_ok=True)
-    with YoutubeDL(ydl_opts) as ydl:
+    with YoutubeDL(video_download_options(work_dir)) as ydl:
         info = ydl.extract_info(url, download=True)
         file_path = Path(ydl.prepare_filename(info))
 
@@ -489,6 +511,54 @@ def segments_for_clip(segments: Iterable[TranscriptSegment], clip: ClipCandidate
     return [item for item in segments if item.end > clip.start and item.start < clip.end]
 
 
+def build_manual_candidates(payload: list[dict], video_duration: float | None) -> list[ClipCandidate]:
+    candidates: list[ClipCandidate] = []
+    for position, item in enumerate(payload, start=1):
+        start = float(item['start'])
+        end = float(item['end'])
+        duration = end - start
+        if start < 0 or duration <= 0 or (video_duration and end > video_duration):
+            raise ValueError(f'Invalid manual range at position {position}')
+        candidates.append(
+            ClipCandidate(
+                index=position,
+                start=start,
+                end=end,
+                duration=duration,
+                score=0,
+                title=str(item.get('title') or f'Pilihan {position}'),
+                reason='Dipilih manual',
+                text='',
+                score_breakdown={},
+            )
+        )
+    return candidates
+
+
+def build_montage_segments(candidates: list[ClipCandidate], max_duration: float) -> list[ClipCandidate]:
+    max_count = min(MAX_MONTAGE_SEGMENTS, int(max_duration // MIN_MONTAGE_SEGMENT_SECONDS), len(candidates))
+    if max_count <= 0:
+        return []
+
+    selected = sorted(candidates, key=lambda item: item.score, reverse=True)[:max_count]
+    segment_budget = max_duration / len(selected)
+    montage_segments = [
+        ClipCandidate(
+            index=index,
+            start=candidate.start,
+            end=min(candidate.end, candidate.start + segment_budget),
+            duration=min(candidate.duration, segment_budget),
+            score=candidate.score,
+            title=candidate.title,
+            reason=candidate.reason,
+            text=candidate.text,
+            score_breakdown=candidate.score_breakdown,
+        )
+        for index, candidate in enumerate(sorted(selected, key=lambda item: item.start), start=1)
+    ]
+    return montage_segments
+
+
 def wrap_subtitle(text: str, max_chars: int = 32, max_lines: int = 2) -> str:
     chunks = split_subtitle_text(text, max_chars=max_chars, max_lines=max_lines)
     return chunks[0] if chunks else ""
@@ -552,6 +622,9 @@ def export_clip(
     clips_dir: Path,
     burn_subtitles: bool,
     crop_mode: CropMode,
+    output_aspect: OutputAspect = 'portrait',
+    output_resolution: OutputResolution = '1080p',
+    sequence_number: int | None = None,
 ) -> Path:
     clips_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"clip_{clip.index:02}_{slugify(clip.title)[:42] or 'auto'}"
@@ -565,7 +638,9 @@ def export_clip(
     write_srt(srt_path, clip_segments, clip.start, duration)
     save_json(json_path, asdict(clip))
 
-    vf = vertical_crop_filter(video_path, clip, crop_mode)
+    vf = output_video_filter(video_path, clip, crop_mode, output_aspect, output_resolution)
+    if sequence_number is not None:
+        vf = f"{vf},{sequence_badge_filter(sequence_number)}"
     if burn_subtitles and clip_segments:
         style = (
             "FontName=Arial,FontSize=5,PrimaryColour=&H00FFFFFF,"
@@ -678,6 +753,65 @@ def export_clip(
     return out_path
 
 
+def export_montage(
+    video_path: Path,
+    candidates: list[ClipCandidate],
+    transcript: list[TranscriptSegment],
+    clips_dir: Path,
+    burn_subtitles: bool,
+    crop_mode: CropMode = 'center',
+    output_aspect: OutputAspect = 'portrait',
+    output_resolution: OutputResolution = '1080p',
+    sequence_badges: bool = True,
+    output_name: str = 'clip_hook_01-05.mp4',
+) -> Path:
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    output_path = clips_dir / output_name
+    with tempfile.TemporaryDirectory(prefix="clipforge-montage-", dir=clips_dir.parent) as temp_name:
+        temp_dir = Path(temp_name)
+        part_paths = [
+            export_clip(
+                video_path,
+                candidate,
+                segments_for_clip(transcript, candidate),
+                temp_dir,
+                burn_subtitles,
+                crop_mode,
+                output_aspect,
+                output_resolution,
+                sequence_number=candidate.index if sequence_badges else None,
+            )
+            for candidate in candidates
+        ]
+        concat_path = temp_dir / "concat.txt"
+        concat_path.write_text(
+            "\n".join(f"file '{path.name}'" for path in part_paths),
+            encoding="utf-8",
+        )
+        run(
+            [
+                ffmpeg_path(),
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                concat_path.name,
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(output_path.resolve()),
+            ],
+            cwd=temp_dir,
+        )
+    return output_path
+
+
 def print_candidates(candidates: list[ClipCandidate]) -> None:
     table = Table(title="Clip candidates")
     table.add_column("#", justify="right")
@@ -714,11 +848,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-burn-subtitles", action="store_true", help="Create SRT files but do not burn subtitles into MP4")
     parser.add_argument(
         "--crop-mode",
-        choices=["center", "person"],
+        choices=["center", "person", "clip"],
         default="center",
-        help="Fit the full video on a gray 9:16 canvas or crop toward a detected person",
+        help="Fit landscape, follow a detected person, or combine up to five numbered hooks",
     )
     parser.add_argument("--force", action="store_true", help="Redo download, audio extraction, and transcription")
+    parser.add_argument('--manual-ranges-json', help='JSON array of manually selected start/end ranges')
+    parser.add_argument('--combine-manual-ranges', action='store_true', help='Join manual ranges into one video')
+    parser.add_argument('--output-aspect', choices=['portrait', 'landscape'], default='portrait')
+    parser.add_argument('--output-resolution', choices=['720p', '1080p', '1440p'], default='1080p')
     return parser.parse_args()
 
 
@@ -758,13 +896,23 @@ def main() -> int:
     )
 
     console.print("[bold]Scoring candidate clips...[/bold]")
-    candidates = build_candidates(transcript, args.min, args.max, args.top)
-    if not transcript:
+    if args.manual_ranges_json:
+        try:
+            candidates = build_manual_candidates(json.loads(args.manual_ranges_json), metadata.get('duration'))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            console.print(f'[red]Invalid manual ranges:[/red] {exc}')
+            return 2
+    else:
+        candidates = build_candidates(transcript, args.min, args.max, args.top)
+    if not transcript and not args.manual_ranges_json:
         console.print("[yellow]No dialogue detected. Using evenly spaced timeline candidates.[/yellow]")
         candidates = build_timeline_candidates(metadata.get("duration"), args.min, args.max, args.top)
     if not candidates:
         console.print("[red]No clip candidates found. Video may be shorter than --min or metadata duration is unavailable.[/red]")
         return 1
+    if args.crop_mode == 'clip':
+        if not args.manual_ranges_json:
+            candidates = build_montage_segments(candidates, args.max)
 
     save_json(work_dir / f"candidates{cache_suffix}.json", [asdict(item) for item in candidates])
     print_candidates(candidates)
@@ -786,19 +934,47 @@ def main() -> int:
 
     console.print("[bold]Exporting vertical clips...[/bold]")
     clips_dir = work_dir / "clips"
-    exported: list[Path] = []
-    for candidate in candidates:
-        clip_segments = segments_for_clip(transcript, candidate)
-        exported.append(
+    if args.combine_manual_ranges:
+        exported = [
+            export_montage(
+                final_video_path,
+                candidates,
+                transcript,
+                clips_dir,
+                not args.no_burn_subtitles,
+                crop_mode=args.crop_mode,
+                output_aspect=args.output_aspect,
+                output_resolution=args.output_resolution,
+                sequence_badges=False,
+                output_name='clip_pilihan_gabungan.mp4',
+            )
+        ]
+    elif args.crop_mode == 'clip' and not args.manual_ranges_json:
+        exported = [
+            export_montage(
+                final_video_path,
+                candidates,
+                transcript,
+                clips_dir,
+                not args.no_burn_subtitles,
+                output_aspect=args.output_aspect,
+                output_resolution=args.output_resolution,
+            )
+        ]
+    else:
+        exported = [
             export_clip(
                 final_video_path,
                 candidate,
-                clip_segments,
+                segments_for_clip(transcript, candidate),
                 clips_dir,
                 not args.no_burn_subtitles,
                 args.crop_mode,
+                args.output_aspect,
+                args.output_resolution,
             )
-        )
+            for candidate in candidates
+        ]
 
     console.print("[green]Done.[/green] Exported:")
     for path in exported:

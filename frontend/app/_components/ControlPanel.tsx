@@ -6,11 +6,7 @@ type ControlPanelProps = {
   error: string;
   isBusy: boolean;
   isSubmitting: boolean;
-  maxDuration: number;
-  minDuration: number;
   onCropModeChange: (mode: CropMode) => void;
-  onMaxDurationChange: (value: number) => void;
-  onMinDurationChange: (value: number) => void;
   onStartJob: () => void;
   onUrlChange: (value: string) => void;
   url: string;
@@ -21,11 +17,7 @@ export function ControlPanel({
   error,
   isBusy,
   isSubmitting,
-  maxDuration,
-  minDuration,
   onCropModeChange,
-  onMaxDurationChange,
-  onMinDurationChange,
   onStartJob,
   onUrlChange,
   url,
@@ -51,29 +43,6 @@ export function ControlPanel({
         <p className="field-help">Pastikan video memiliki percakapan yang jelas untuk hasil transkripsi terbaik.</p>
       </label>
 
-      <div className="gridFields">
-        <label className="field">
-          <span>Durasi Minimum</span>
-          <input
-            min={5}
-            max={600}
-            type="number"
-            value={minDuration}
-            onChange={(event) => onMinDurationChange(Number(event.target.value))}
-          />
-        </label>
-        <label className="field">
-          <span>Durasi Maksimum</span>
-          <input
-            min={10}
-            max={600}
-            type="number"
-            value={maxDuration}
-            onChange={(event) => onMaxDurationChange(Number(event.target.value))}
-          />
-        </label>
-      </div>
-
       <div className="segmentedField">
         <span>Mode Crop</span>
         <div className="segmentedControl" role="group" aria-label="Mode crop video">
@@ -91,11 +60,20 @@ export function ControlPanel({
           >
             Follow Person
           </button>
+          <button
+            className={cropMode === "clip" ? "active" : ""}
+            type="button"
+            onClick={() => onCropModeChange("clip")}
+          >
+            Clip
+          </button>
         </div>
         <p className="field-help">
           {cropMode === "center"
             ? "Rasio video dipertahankan; ruang atas dan bawah diisi abu-abu."
-            : "Video di-crop vertikal mengikuti posisi orang yang terdeteksi."}
+            : cropMode === "person"
+              ? "Video di-crop vertikal mengikuti posisi orang yang terdeteksi."
+              : "Gabungkan maksimal 5 hook terbaik menjadi satu video; nomor segmen tampil di kiri."}
         </p>
       </div>
 
