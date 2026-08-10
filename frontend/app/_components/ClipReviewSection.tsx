@@ -7,6 +7,7 @@ import type { ClipRange, OutputAspect, OutputResolution } from '../../types/clip
 
 type ClipReviewSectionProps = {
   exportDisabled: boolean;
+  initialRanges?: ClipRange[];
   sourceUrl: string | null;
   videoDuration: number | null;
   onRender: (
@@ -31,11 +32,11 @@ const formatTime = (seconds: number) => {
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 
-export function ClipReviewSection({ exportDisabled, sourceUrl, videoDuration, onRender }: ClipReviewSectionProps) {
+export function ClipReviewSection({ exportDisabled, initialRanges = [], sourceUrl, videoDuration, onRender }: ClipReviewSectionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState(videoDuration ?? 0);
-  const [playhead, setPlayhead] = useState(0);
-  const [ranges, setRanges] = useState<ClipRange[]>([]);
+  const [playhead, setPlayhead] = useState(initialRanges[0]?.start ?? 0);
+  const [ranges, setRanges] = useState<ClipRange[]>(initialRanges);
   const [combine, setCombine] = useState(false);
   const [outputAspect, setOutputAspect] = useState<OutputAspect>('portrait');
   const [outputResolution, setOutputResolution] = useState<OutputResolution>('1080p');
@@ -89,7 +90,10 @@ export function ClipReviewSection({ exportDisabled, sourceUrl, videoDuration, on
         <div className='editorPreview'>
           <video
             controls
-            onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || videoDuration || 0)}
+            onLoadedMetadata={(event) => {
+              setDuration(event.currentTarget.duration || videoDuration || 0);
+              if (initialRanges[0]) event.currentTarget.currentTime = initialRanges[0].start;
+            }}
             onTimeUpdate={(event) => setPlayhead(event.currentTarget.currentTime)}
             preload='metadata'
             ref={videoRef}

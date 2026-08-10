@@ -12,7 +12,8 @@ import {
   RECENT_LOG_LIMIT,
 } from "../lib/constants";
 import { isActiveJob } from "../lib/utils";
-import type { ClipJob, ClipRange, CropMode, OutputAspect, OutputResolution } from '../types/clip.type';
+import type { ClipCandidate, ClipJob, ClipRange, CropMode, OutputAspect, OutputResolution } from '../types/clip.type';
+import { AutoCutSection } from './_components/AutoCutSection';
 import { ClipReviewSection } from './_components/ClipReviewSection';
 import { ControlPanel } from "./_components/ControlPanel";
 import { DeleteAllToast } from "./_components/DeleteAllToast";
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [cropMode, setCropMode] = useState<CropMode>("person");
   const [job, setJob] = useState<ClipJob | null>(null);
   const [editorJob, setEditorJob] = useState<ClipJob | null>(null);
+  const [editorCandidate, setEditorCandidate] = useState<ClipCandidate | null>(null);
   const [jobs, setJobs] = useState<ClipJob[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -93,6 +95,7 @@ export default function HomePage() {
 
       setJob(nextJob);
       setEditorJob(null);
+      setEditorCandidate(null);
       await loadJobs();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Gagal memulai proses.");
@@ -110,6 +113,7 @@ export default function HomePage() {
 
     setJob(null);
     setEditorJob(null);
+    setEditorCandidate(null);
     await loadJobs();
   }, [loadJobs]);
 
@@ -140,8 +144,18 @@ export default function HomePage() {
 
   const handleSelectJob = useCallback((selectedJob: ClipJob) => {
     setJob(selectedJob);
-    if (selectedJob.status === 'completed' && selectedJob.source_url) setEditorJob(selectedJob);
+    if (selectedJob.status === 'completed' && selectedJob.source_url) {
+      setEditorJob(selectedJob);
+      setEditorCandidate(null);
+    }
   }, []);
+
+  const handleSelectCandidate = useCallback((candidate: ClipCandidate) => {
+    if (!job?.source_url) return;
+    setEditorJob(job);
+    setEditorCandidate(candidate);
+    window.requestAnimationFrame(() => document.getElementById('video-editor')?.scrollIntoView({ behavior: 'smooth' }));
+  }, [job]);
 
   return (
     <main className="shell">
@@ -161,13 +175,23 @@ export default function HomePage() {
         <StatusPanel job={job} latestLogs={latestLogs} />
       </section>
 
+      <AutoCutSection
+        candidates={job?.candidates ?? []}
+        onSelect={handleSelectCandidate}
+        selectedIndex={editorCandidate?.index ?? null}
+      />
+
       {editorJob ? (
-        <ClipReviewSection
+        <div id='video-editor'>
+          <ClipReviewSection
           exportDisabled={isBusy}
+          initialRanges={editorCandidate ? [editorCandidate] : []}
+          key={`${editorJob.id}-${editorCandidate?.index ?? 'empty'}`}
           onRender={handleRenderSelection}
           sourceUrl={editorJob.source_url}
           videoDuration={editorJob.video_duration}
-        />
+          />
+        </div>
       ) : null}
 
       <ResultsSection clips={job?.clips ?? []} />

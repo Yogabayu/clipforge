@@ -233,6 +233,38 @@ h2 {
   transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
+.autoCutSection .candidateCard {
+  min-height: 0;
+}
+
+.autoCutIndex,
+.autoCutSelected,
+.autoCutEditButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.autoCutIndex {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.autoCutSelected {
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.autoCutEditButton {
+  width: 100%;
+  margin-top: auto;
+  padding: 0 16px;
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .segmentedControl button:active {
   transform: scale(0.96);
 }
