@@ -16,13 +16,23 @@ from rich.console import Console
 from rich.table import Table
 from slugify import slugify
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 from montage import sequence_badge_filter
 from scoring import score_window
+from source_files import complete_source_files
 from video_resolution import OutputAspect, OutputResolution, build_output_filter
 
 
 console = Console()
+
+VIDEO_DOWNLOAD_FORMATS = (
+    "bestvideo[height<=720][protocol^=m3u8]+bestaudio[protocol^=m3u8]/"
+    "best[height<=720][protocol^=m3u8]",
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+    "bestvideo[height<=1080]+bestaudio/"
+    "best[height<=1080]/best",
+)
 
 
 @dataclass
@@ -293,13 +303,9 @@ def fetch_metadata(url: str) -> dict:
         return sanitize_metadata(ydl.extract_info(url, download=False))
 
 
-def video_download_options(work_dir: Path) -> dict:
+def video_download_options(work_dir: Path, format_selector: str = VIDEO_DOWNLOAD_FORMATS[0]) -> dict:
     return {
-        "format": (
-            "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
-            "bestvideo[height<=1080]+bestaudio/"
-            "best[height<=1080]/best"
-        ),
+        "format": format_selector,
         "outtmpl": str(work_dir / "source.%(ext)s"),
         "merge_output_format": "mp4",
         "noplaylist": True,
@@ -310,23 +316,40 @@ def video_download_options(work_dir: Path) -> dict:
         "socket_timeout": 60,
         "retries": 20,
         "fragment_retries": 20,
+        "concurrent_fragment_downloads": 4,
         "continuedl": True,
+        "js_runtimes": {"node": {}},
     }
+
+
+def _is_http_403_download_error(error: DownloadError) -> bool:
+    return "HTTP Error 403" in str(error)
 
 
 def download_video(url: str, work_dir: Path, force: bool = False) -> tuple[Path, dict]:
     info_path = work_dir / "metadata.json"
-    existing = sorted(work_dir.glob("source.*"))
-    if existing and info_path.exists() and not force:
-        return existing[0], load_json(info_path)
+    existing = complete_source_files(work_dir)
+    if existing and not force:
+        if info_path.exists():
+            return existing[0], load_json(info_path)
+        metadata = fetch_metadata(url)
+        save_json(info_path, metadata)
+        return existing[0], metadata
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    with YoutubeDL(video_download_options(work_dir)) as ydl:
-        info = ydl.extract_info(url, download=True)
-        file_path = Path(ydl.prepare_filename(info))
+    for attempt, format_selector in enumerate(VIDEO_DOWNLOAD_FORMATS):
+        try:
+            with YoutubeDL(video_download_options(work_dir, format_selector)) as ydl:
+                info = ydl.extract_info(url, download=True)
+                file_path = Path(ydl.prepare_filename(info))
+            break
+        except DownloadError as error:
+            if attempt == len(VIDEO_DOWNLOAD_FORMATS) - 1 or not _is_http_403_download_error(error):
+                raise
+            console.print("Download URL returned HTTP 403; retrying with compatible fallback format...")
 
     if not file_path.exists():
-        downloaded = sorted(work_dir.glob("source.*"))
+        downloaded = complete_source_files(work_dir)
         if not downloaded:
             raise FileNotFoundError("Downloaded video was not found.")
         file_path = downloaded[0]

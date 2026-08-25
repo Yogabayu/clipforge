@@ -19,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from yt_dlp import YoutubeDL
 
+from source_files import complete_source_files, is_complete_source_name
+
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
@@ -131,21 +133,25 @@ def save_jobs_unlocked() -> None:
     temp_path.replace(JOBS_PATH)
 
 
-def clear_outputs_dir() -> int:
+def clear_outputs_dir() -> tuple[int, list[str]]:
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     root = OUTPUTS_DIR.resolve()
     removed = 0
+    skipped: list[str] = []
     for item in OUTPUTS_DIR.iterdir():
         resolved = item.resolve()
         if root not in resolved.parents:
             raise RuntimeError(f"Refusing to delete path outside outputs: {resolved}")
 
-        if item.is_dir():
-            shutil.rmtree(item)
-        else:
-            item.unlink()
-        removed += 1
-    return removed
+        try:
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+            removed += 1
+        except OSError:
+            skipped.append(item.name)
+    return removed, skipped
 
 
 jobs: dict[str, ClipJob] = load_jobs()
@@ -197,7 +203,7 @@ def discover_source(started_at: float) -> tuple[str | None, float | None]:
         return None, None
 
     work_dir = max(candidate_files, key=lambda path: path.stat().st_mtime).parent
-    source_files = sorted(work_dir.glob('source.*'))
+    source_files = complete_source_files(work_dir)
     metadata_path = work_dir / 'metadata.json'
     duration = None
     if metadata_path.exists():
@@ -208,14 +214,14 @@ def discover_source(started_at: float) -> tuple[str | None, float | None]:
 
 
 def hydrate_job_source(job: ClipJob) -> ClipJob:
-    if job.source_url and job.video_duration:
+    if job.source_url and job.video_duration and is_complete_source_name(job.source_url):
         return job
     for metadata_path in OUTPUTS_DIR.rglob('metadata.json'):
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         known_urls = {metadata.get('webpage_url'), metadata.get('original_url')}
         if job.request.url not in known_urls:
             continue
-        source_files = sorted(metadata_path.parent.glob('source.*'))
+        source_files = complete_source_files(metadata_path.parent)
         if not source_files or not metadata.get('duration'):
             continue
         data = job.model_dump()
@@ -470,12 +476,18 @@ def list_jobs() -> list[ClipJob]:
 
 
 @app.delete("/api/jobs")
-def delete_all_jobs() -> dict[str, str | int]:
+def delete_all_jobs() -> dict[str, str | int | list[str]]:
     with jobs_lock:
+        if any(job.status in {"queued", "running"} for job in jobs.values()):
+            raise HTTPException(status_code=409, detail="Stop active jobs before deleting history")
         jobs.clear()
         save_jobs_unlocked()
-        removed_outputs = clear_outputs_dir()
-    return {"status": "ok", "removed_outputs": removed_outputs}
+    removed_outputs, skipped_outputs = clear_outputs_dir()
+    return {
+        "status": "ok",
+        "removed_outputs": removed_outputs,
+        "skipped_outputs": skipped_outputs,
+    }
 
 
 @app.get("/api/jobs/{job_id}", response_model=ClipJob)

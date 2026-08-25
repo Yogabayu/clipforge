@@ -61,7 +61,7 @@ export default function HomePage() {
   }, [activeJobId, loadJobs]);
 
   useEffect(() => {
-    if (job?.status === 'completed' && job.source_url) setEditorJob(job);
+    if (job?.status === 'completed' && job.source_url && job.candidates.length) setEditorJob(job);
   }, [job]);
 
   const handleStartJob = useCallback(async () => {
@@ -151,11 +151,10 @@ export default function HomePage() {
   }, []);
 
   const handleSelectCandidate = useCallback((candidate: ClipCandidate) => {
-    if (!job?.source_url) return;
-    setEditorJob(job);
+    if (!editorJob?.source_url) return;
     setEditorCandidate(candidate);
     window.requestAnimationFrame(() => document.getElementById('video-editor')?.scrollIntoView({ behavior: 'smooth' }));
-  }, [job]);
+  }, [editorJob]);
 
   return (
     <main className="shell">
@@ -176,7 +175,7 @@ export default function HomePage() {
       </section>
 
       <AutoCutSection
-        candidates={job?.candidates ?? []}
+        candidates={editorJob?.candidates ?? []}
         onSelect={handleSelectCandidate}
         selectedIndex={editorCandidate?.index ?? null}
       />

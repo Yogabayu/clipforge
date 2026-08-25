@@ -1,20 +1,25 @@
 # ClipForge
 
-Local-first tool for turning long YouTube videos into ready-to-post vertical clips with transcription, burned-in subtitles, and smart crop options.
+Local-first tool for reviewing long YouTube videos, selecting useful ranges, and exporting ready-to-post clips with local transcription and smart crop options.
 
 ## Overview
 
-![ClipForge overview](image.png)
+![ClipForge control panel](Img_1.png)
+![ClipForge full-video editor](Img_2.png)
+![ClipForge render history](Img_3.png)
 
 ## Features
 
-- Download a single YouTube video with `yt-dlp`.
+- Download a single YouTube video with `yt-dlp`, including an HLS fallback for HTTP 403 responses.
 - Transcribe locally with `faster-whisper`.
 - Score transcript windows for clip candidates.
-- Export vertical 9:16 MP4 clips with SRT files.
+- Preview the full source video and mark multiple custom ranges before rendering.
+- Export separate clips or combine selected ranges into one video.
+- Export portrait 9:16 or landscape 16:9 MP4 at 720p, 1080p, or 1440p.
 - Burn subtitles into clips by default.
 - Crop center or shift crop toward detected faces/people.
-- Manage jobs and generated clips from a Next.js UI.
+- Keep Auto Cut candidates available after a manual export.
+- Manage, preview, download, and delete jobs from a Next.js UI.
 - Run locally with Python/Node or with Docker Compose.
 
 ## Requirements
@@ -22,6 +27,7 @@ Local-first tool for turning long YouTube videos into ready-to-post vertical cli
 - Python 3.12+
 - Node.js 22+
 - npm
+- FFmpeg and FFprobe available on `PATH`
 - Network access for YouTube downloads and model downloads
 - Enough CPU, disk, and time for transcription and video encoding
 
@@ -108,9 +114,21 @@ GET    /api/health
 POST   /api/jobs
 GET    /api/jobs
 GET    /api/jobs/{job_id}
+POST   /api/jobs/{job_id}/render
 DELETE /api/jobs
 GET    /outputs/<generated-file>
 ```
+
+`POST /api/jobs` prepares metadata, source preview, transcript, and Auto Cut candidates. It does not render clips automatically. Send the chosen ranges to `POST /api/jobs/{job_id}/render` when review is complete.
+
+## Processing Notes
+
+- Long videos take time: download, audio extraction, transcription, scoring, and rendering run as background jobs.
+- Existing complete source videos, metadata, transcripts, and candidates are reused when possible.
+- If a YouTube CDN URL returns HTTP 403, the downloader retries once with a compatible fallback format.
+- Video preview supports HTTP range requests. A working preview normally returns HTTP `206 Partial Content` while seeking.
+- Deleting history is rejected while a job is queued or running. Wait for active work to finish first.
+- On Windows, an output currently open by the browser may remain locked. History deletion still succeeds and reports that output as skipped; close or refresh the preview before cleaning it again.
 
 ## Configuration
 
