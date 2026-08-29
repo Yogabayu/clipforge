@@ -317,7 +317,7 @@ def build_selection_command(
     output_aspect: Literal['portrait', 'landscape'],
     output_resolution: Literal['720p', '1080p', '1440p'],
 ) -> list[str]:
-    command = build_clipper_command(request)
+    command = build_clipper_command(request.model_copy(update={'analyze_seconds': None}))
     command.extend(['--manual-ranges-json', json.dumps([item.model_dump() for item in ranges])])
     if combine:
         command.append('--combine-manual-ranges')

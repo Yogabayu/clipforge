@@ -13,11 +13,12 @@ class ExportFlowTests(TestCase):
         self.assertNotIn('--manual-ranges-json', command)
 
     def test_manual_command_carries_aspect_resolution_and_combine_flags(self) -> None:
-        request = ClipJobRequest(url='https://youtu.be/example')
+        request = ClipJobRequest(url='https://youtu.be/example', analyze_seconds=120)
         ranges = [ClipRange(index=1, start=10, end=20, title='Bagian 1')]
 
         command = build_selection_command(request, ranges, True, 'landscape', '1440p')
 
+        self.assertNotIn('--analyze-seconds', command)
         self.assertIn('--manual-ranges-json', command)
         self.assertIn('--combine-manual-ranges', command)
         self.assertEqual(command[command.index('--output-aspect') + 1], 'landscape')
