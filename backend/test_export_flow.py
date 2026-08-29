@@ -18,7 +18,7 @@ class ExportFlowTests(TestCase):
 
         command = build_selection_command(request, ranges, True, 'landscape', '1440p')
 
-        self.assertNotIn('--analyze-seconds', command)
+        self.assertEqual(command[command.index('--analyze-seconds') + 1], '120.0')
         self.assertIn('--manual-ranges-json', command)
         self.assertIn('--combine-manual-ranges', command)
         self.assertEqual(command[command.index('--output-aspect') + 1], 'landscape')
