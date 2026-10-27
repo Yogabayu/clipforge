@@ -79,6 +79,7 @@ export default function HomePage() {
       const nextJob = await toast.promise(
         createJob({
           url: trimmedUrl,
+          top: 10,
           min_duration: DEFAULT_MIN_DURATION,
           max_duration: DEFAULT_MAX_DURATION,
           model: DEFAULT_MODEL,

@@ -859,7 +859,7 @@ def print_candidates(candidates: list[ClipCandidate]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Local YouTube auto clipper for short vertical videos.")
     parser.add_argument("url", help="YouTube URL")
-    parser.add_argument("--top", type=int, default=5, help="Number of clips to export")
+    parser.add_argument("--top", type=int, default=10, help="Number of clip recommendations")
     parser.add_argument("--min", type=float, default=35, help="Minimum clip duration in seconds")
     parser.add_argument("--max", type=float, default=180, help="Maximum clip duration in seconds")
     parser.add_argument("--model", default="Systran/faster-whisper-small", help="faster-whisper model name")

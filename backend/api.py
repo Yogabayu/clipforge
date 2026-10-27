@@ -7,7 +7,6 @@ import sys
 import threading
 import time
 import uuid
-from math import ceil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -25,9 +24,7 @@ from source_files import complete_source_files, is_complete_source_name
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 JOBS_PATH = BASE_DIR / "jobs.json"
-SECONDS_PER_TARGET_CLIP = 360
-MIN_AUTO_CLIPS = 2
-MAX_AUTO_CLIPS = 8
+DEFAULT_RECOMMENDATIONS = 10
 FULL_ANALYSIS_LIMIT_SECONDS = 30 * 60
 LONG_VIDEO_ANALYSIS_RATIO = 0.55
 MAX_AUTO_ANALYSIS_SECONDS = 60 * 60
@@ -261,12 +258,6 @@ def fetch_video_duration(url: str) -> float | None:
     return float(duration) if duration else None
 
 
-def choose_auto_top(duration: float | None) -> int:
-    if not duration:
-        return MIN_AUTO_CLIPS + 3
-    return clamp(ceil(duration / SECONDS_PER_TARGET_CLIP), MIN_AUTO_CLIPS, MAX_AUTO_CLIPS)
-
-
 def choose_auto_analyze_seconds(duration: float | None) -> float | None:
     if not duration or duration <= FULL_ANALYSIS_LIMIT_SECONDS:
         return None
@@ -278,7 +269,7 @@ def normalize_job_request(request: ClipJobRequest) -> ClipJobRequest:
     data = request.model_dump()
 
     if request.top is None:
-        data["top"] = choose_auto_top(duration)
+        data["top"] = DEFAULT_RECOMMENDATIONS
     if request.analyze_seconds is None:
         data["analyze_seconds"] = choose_auto_analyze_seconds(duration)
 
@@ -291,7 +282,7 @@ def build_clipper_command(request: ClipJobRequest) -> list[str]:
         "clipper.py",
         request.url,
         "--top",
-        str(request.top or choose_auto_top(None)),
+        str(request.top or DEFAULT_RECOMMENDATIONS),
         "--min",
         str(request.min_duration),
         "--max",

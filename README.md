@@ -96,7 +96,7 @@ The backend can also run without the UI:
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe clipper.py "https://www.youtube.com/watch?v=..." --top 5 --min 35 --max 180
+.\.venv\Scripts\python.exe clipper.py "https://www.youtube.com/watch?v=..." --top 10 --min 35 --max 180
 ```
 
 Quick test on the first 180 seconds:

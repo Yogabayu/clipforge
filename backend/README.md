@@ -43,7 +43,7 @@ GET  /outputs/<generated-file>
 Common CLI options:
 
 ```powershell
-.\.venv\Scripts\python.exe clipper.py "URL" --top 5 --min 35 --max 180
+.\.venv\Scripts\python.exe clipper.py "URL" --top 10 --min 35 --max 180
 ```
 
 Test cepat tanpa transcribe full video:
