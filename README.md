@@ -152,6 +152,8 @@ Do not expose the backend publicly without authentication, rate limits, request 
 
 ## Project Structure
 
+Android Flutter prototype: see [mobile/README.md](mobile/README.md). The mobile app runs YouTube download, Whisper transcription, Auto Cut recommendations, range editing, subtitles and clip rendering locally on ARM64 Android. Physical-device verification is documented separately from APK build verification.
+
 ```text
 backend/
   api.py                 FastAPI job API
